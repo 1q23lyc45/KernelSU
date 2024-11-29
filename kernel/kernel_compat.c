@@ -15,22 +15,18 @@
 #include <linux/errno.h>
 #include <linux/cred.h>
 struct key *init_session_keyring = NULL;
-
 static inline int install_session_keyring(struct key *keyring)
 {
 	struct cred *new;
 	int ret;
-
 	new = prepare_creds();
 	if (!new)
 		return -ENOMEM;
-
 	ret = install_session_keyring_to_cred(new, keyring);
 	if (ret < 0) {
 		abort_creds(new);
 		return ret;
 	}
-
 	return commit_creds(new);
 }
 #endif
@@ -75,6 +71,16 @@ void ksu_android_ns_fs_check()
 		pr_info("android context saved disabled\n");
 	}
 	task_unlock(current);
+}
+
+int ksu_access_ok(const void *addr, unsigned long size) {
+#if LINUX_VERSION_CODE < KERNEL_VERSION(5,0,0)
+    /* For kernels before 5.0.0, pass the type argument to access_ok. */
+    return access_ok(VERIFY_READ, addr, size);
+#else
+    /* For kernels 5.0.0 and later, ignore the type argument. */
+    return access_ok(addr, size);
+#endif
 }
 
 struct file *ksu_filp_open_compat(const char *filename, int flags, umode_t mode)
@@ -154,23 +160,19 @@ long ksu_strncpy_from_user_nofault(char *dst, const void __user *unsafe_addr,
 {
 	mm_segment_t old_fs = get_fs();
 	long ret;
-
 	if (unlikely(count <= 0))
 		return 0;
-
 	set_fs(USER_DS);
 	pagefault_disable();
 	ret = strncpy_from_user(dst, unsafe_addr, count);
 	pagefault_enable();
 	set_fs(old_fs);
-
 	if (ret >= count) {
 		ret = count;
 		dst[ret - 1] = '\0';
 	} else if (ret > 0) {
 		ret++;
 	}
-
 	return ret;
 }
 #endif
